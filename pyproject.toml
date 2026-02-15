@@ -1,0 +1,16 @@
+[project]
+name = "this-day"
+version = "0.1.0"
+description = "Patti-style 'This Day' page + Basic Auth + Mini Calendar (birthdays highlighted)"
+requires-python = ">=3.10"
+dependencies = [
+  "Flask>=2.3",
+  "requests>=2.31",
+  "gunicorn>=21.2; platform_system != 'Windows'",
+]
+
+[project.scripts]
+this-day = "this_day.cli:main"
+
+[tool.setuptools]
+packages = ["this_day"]
