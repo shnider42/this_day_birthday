@@ -22,6 +22,7 @@ from .config import (
     DEFAULT_TITLE,
 )
 from .fetchers import numbersapi_fun_fact, wiki_on_this_day
+from .extrasources import get_extra_sources
 from .renderer import html_page
 from .utils import parse_mm_dd, today_mm_dd
 
@@ -76,6 +77,7 @@ def render_page() -> Response:
 
     onthisday = {"events": [], "births": []}
     fun_fact = ""
+    extras = {}
     debug_error = ""
 
     if show_facts:
@@ -89,7 +91,17 @@ def render_page() -> Response:
             fun_fact = numbersapi_fun_fact(month, day, cache_dir)
         except Exception as e:
             fun_fact = ""
-            debug_error = (debug_error + " | " if debug_error else "") + f"NumbersAPI failed: {type(e).__name__}: {e}"
+            debug_error = (debug_error + " | " if debug_error else "") + (
+                f"NumbersAPI failed: {type(e).__name__}: {e}"
+            )
+
+        try:
+            extras = get_extra_sources(month, day, cache_dir)
+        except Exception as e:
+            extras = {}
+            debug_error = (debug_error + " | " if debug_error else "") + (
+                f"Extra sources failed: {type(e).__name__}: {e}"
+            )
 
     page = html_page(
         title=title,
@@ -98,6 +110,7 @@ def render_page() -> Response:
         day=day,
         onthisday=onthisday,
         fun_fact=fun_fact,
+        extras=extras,
         birthday_hits=birthday_hits,
         phones=phones,
         sports_keywords=sports_keywords,

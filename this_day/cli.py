@@ -15,6 +15,7 @@ from .config import (
     DEFAULT_TITLE,
 )
 from .fetchers import numbersapi_fun_fact, wiki_on_this_day
+from .extrasources import get_extra_sources
 from .renderer import html_page
 from .utils import parse_mm_dd, today_mm_dd
 
@@ -62,14 +63,14 @@ def main(argv: list[str] | None = None) -> int:
 
     onthisday = {"events": [], "births": []}
     fun_fact = ""
+    extras = {}
+
     show_facts = bool(args.show)
+
     if show_facts:
-        try:
-            onthisday = wiki_on_this_day(month, day, cache_dir)
-        except Exception as e:
-            onthisday = {"events": [], "births": []}
-            print(f"[warn] Failed to fetch Wikimedia data: {e}")
+        onthisday = wiki_on_this_day(month, day, cache_dir)
         fun_fact = numbersapi_fun_fact(month, day, cache_dir)
+        extras = get_extra_sources(month, day, cache_dir)
 
     page = html_page(
         title=args.title,
@@ -78,6 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         day=day,
         onthisday=onthisday,
         fun_fact=fun_fact,
+        extras=extras,
         birthday_hits=birthday_hits,
         phones=phones,
         sports_keywords=sports_keywords,

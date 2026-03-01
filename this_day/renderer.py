@@ -4,7 +4,7 @@ import datetime as dt
 import html
 import json
 import random
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from .birthdays import phones_to_to_field_text
 from .cards import generate_card
@@ -40,19 +40,32 @@ def html_page(
     day: int,
     onthisday: Dict[str, Any],
     fun_fact: str,
-    birthday_hits: List[Dict[str, Any]],
-    phones: List[Dict[str, str]],
+    birthday_hits: List[Dict[str, str]],
+    phones: List[Tuple[str, str]],
     sports_keywords: List[str],
     rock_keywords: List[str],
     seed: int,
-    birthdays_index: Dict[str, List[str]],
+    birthdays_index: Dict[Tuple[int, int], List[str]],
     show_facts: bool,
     debug_error: str = "",
+    extras: Dict[str, Any] | None = None,
 ) -> str:
     date_label = dt.date(2000, month, day).strftime("%B %d").replace(" 0", " ")
 
     events = (onthisday.get("events", []) or []) if show_facts else []
     births = (onthisday.get("births", []) or []) if show_facts else []
+
+    extras = extras or {}
+
+    extra_events = (extras.get("events") or []) if show_facts else []
+    extra_births = (extras.get("births") or []) if show_facts else []
+    extra_holidays = (extras.get("holidays") or []) if show_facts else []
+
+    if extra_events:
+        events = list(events) + list(extra_events)
+
+    if extra_births:
+        births = list(births) + list(extra_births)
 
     featured_events = pick_items(events, n=6, seed=seed + 1) if show_facts else []
     featured_births = pick_items(births, n=6, seed=seed + 2) if show_facts else []
@@ -87,6 +100,9 @@ def html_page(
         rows = []
         for it in items_list:
             year, text = extract_year_text(it)
+            src = str(it.get("source", "")).strip() if isinstance(it, dict) else ""
+            if src:
+                text = f"{text} — {src}"
             rows.append(f"<li><span class='year'>{html.escape(year)}</span> {html.escape(text)}</li>")
         return "\n".join(rows)
 
@@ -248,7 +264,30 @@ def html_page(
   </section>
 """
 
+        holidays_card = ""
+        if extra_holidays:
+            items = []
+            for h in extra_holidays[:10]:
+                t = str(h.get("text", "")).strip() if isinstance(h, dict) else str(h).strip()
+                if t:
+                    items.append(f"<li>{html.escape(t)}</li>")
+
+            if items:
+                holidays_card = f"""
+        <section class="card">
+          <h2>🎉 Holidays & observances</h2>
+          <div class="sub" style="margin-top:-2px;">
+            Extra: pulled from a holiday calendar source.
+          </div>
+          <ul>
+            {''.join(items)}
+          </ul>
+        </section>
+        """
+
         pool = [family_card, history_card, boston_card, rock_card, funfact_card, births_card, wildcard_card]
+        if holidays_card:
+            pool.append(holidays_card)
         chosen = rng_cards.sample(pool, k=5) if len(pool) >= 5 else pool[:]
 
         final_cards = [phone_card] + chosen
