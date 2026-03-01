@@ -46,6 +46,11 @@ def thefactsite_day(month: int, day: int, cache_dir: Path) -> Dict[str, Any]:
     Pull a couple items from TheFactSite’s date page:
       - one "Did you know..." fun fact (if found)
       - a small set of "YEAR - event" lines (best-effort)
+
+    Hardened parsing:
+      - avoid matching random numbers from HTML/CSS/JS
+      - only accept plausible years and sentence-like text
+      - try list-item parsing first; regex is fallback
     """
     ck = _cache_key("thefactsite", month, day)
     cached = cache_get(cache_dir, ck)
@@ -54,27 +59,104 @@ def thefactsite_day(month: int, day: int, cache_dir: Path) -> Dict[str, Any]:
 
     mn = _month_name(month)
     url = f"https://www.thefactsite.com/day/{mn}-{day}/"
-    out: Dict[str, Any] = {"fun_fact": "", "events": [], "source": "thefactsite", "url": url}
+    out: Dict[str, Any] = {"fun_fact": "", "events": [], "source": "The Fact Site", "url": url}
+
+    def looks_like_event_text(t: str) -> bool:
+        if not t:
+            return False
+        t = t.strip()
+
+        # Must contain letters (not just numbers/punctuation)
+        if not re.search(r"[A-Za-z]", t):
+            return False
+
+        # Reject text that is mostly digits/punct
+        non_space = re.sub(r"\s+", "", t)
+        if not non_space:
+            return False
+        digitish = sum(1 for ch in non_space if ch.isdigit() or ch in "-–—:/.,()[]#")
+        if digitish / max(1, len(non_space)) > 0.65:
+            return False
+
+        # Avoid very short junk
+        if len(t) < 25:
+            return False
+
+        return True
+
+    def year_ok(y: str) -> bool:
+        try:
+            yi = int(y)
+        except Exception:
+            return False
+        current_year = dt.date.today().year
+        return 1000 <= yi <= current_year
 
     try:
         raw = _fetch_html(url)
 
-        # Fun fact often contains "Did you know that on this day..."
-        m = re.search(r"Did you know that on this day[^<]{0,220}<", raw, flags=re.IGNORECASE)
+        # Fun fact: try to find a "Did you know..." sentence
+        m = re.search(r"(Did you know[^<]{20,240})<", raw, flags=re.IGNORECASE)
         if m:
-            snippet = raw[m.start() : m.end()]
-            out["fun_fact"] = _strip_tags(snippet).rstrip("<").strip()
+            out["fun_fact"] = _strip_tags(m.group(1)).strip()
 
-        # Best-effort "YEAR - ..." lines
-        candidates = []
-        for mm in re.finditer(r"(\b\d{3,4}\b)\s*[–-]\s*([^<]{20,220})", raw):
-            year = mm.group(1).strip()
-            text = _strip_tags(mm.group(2))
-            if text:
-                candidates.append({"year": year, "text": text})
-            if len(candidates) >= 12:
+        events: List[Dict[str, str]] = []
+
+        # 1) Preferred: parse <li> items that contain a bold/strong year
+        # Look for list items where a 3-4 digit year appears in <strong> or <b>
+        for mm in re.finditer(r"<li[^>]*>(.*?)</li>", raw, flags=re.IGNORECASE | re.DOTALL):
+            li_html = mm.group(1)
+
+            # Extract a year that is explicitly emphasized
+            ym = re.search(r"<(strong|b)[^>]*>\s*(\d{3,4})\s*</\1>", li_html, flags=re.IGNORECASE)
+            if not ym:
+                continue
+
+            year = ym.group(2).strip()
+            if not year_ok(year):
+                continue
+
+            # Remove the emphasized year from the li and strip tags
+            li_wo_year = re.sub(r"<(strong|b)[^>]*>\s*\d{3,4}\s*</\1>", " ", li_html, flags=re.IGNORECASE)
+            text = _strip_tags(li_wo_year)
+
+            # Sometimes the site uses separators like "-" or "–" after the year
+            text = re.sub(r"^\s*[-–—:]\s*", "", text).strip()
+
+            if not looks_like_event_text(text):
+                continue
+
+            events.append({"year": year, "text": text})
+            if len(events) >= 10:
                 break
-        out["events"] = candidates[:10]
+
+        # 2) Fallback: regex "YEAR - something" but hardened
+        if not events:
+            for mm in re.finditer(r"\b(\d{3,4})\b\s{0,3}[–-]\s{0,3}([^<]{25,240})", raw):
+                year = mm.group(1).strip()
+                if not year_ok(year):
+                    continue
+
+                text = _strip_tags(mm.group(2)).strip()
+                if not looks_like_event_text(text):
+                    continue
+
+                events.append({"year": year, "text": text})
+                if len(events) >= 10:
+                    break
+
+        # De-dupe by (year, text)
+        seen = set()
+        deduped = []
+        for e in events:
+            k = (e.get("year", "").strip(), e.get("text", "").strip().lower())
+            if not k[0] or not k[1] or k in seen:
+                continue
+            seen.add(k)
+            deduped.append(e)
+
+        out["events"] = deduped[:10]
+
     except Exception:
         pass
 
