@@ -107,13 +107,17 @@ def generate_card(
     blurb: str = "",
     n: int = 5,
     show_keywords: bool = True,
+    min_score: int = 8,
 ) -> str:
     scored: List[Tuple[int, Dict[str, Any]]] = []
     for it in (items or []):
         _, text = extract_year_text(it)
         s = _score_sports_relevance(text, keywords)
-        if s <= -100:
+
+        # Only keep items that score as meaningfully sports-related.
+        if s < min_score:
             continue
+
         scored.append((s, it))
 
     scored.sort(key=lambda x: (x[0], extract_year_text(x[1])[0], extract_year_text(x[1])[1]), reverse=True)

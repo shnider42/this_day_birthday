@@ -214,6 +214,7 @@ def html_page(
             blurb="Sports-first, good-vibes-only. If a word has two meanings, we pick the jersey version.",
             empty_message="No obvious sports hits today — the universe is in a bye week. 😄",
             n=5,
+            min_score=8,
             show_keywords=True,
         )
 
